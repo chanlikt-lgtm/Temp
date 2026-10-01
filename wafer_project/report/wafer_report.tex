@@ -1,0 +1,245 @@
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+%  Wafer-rack equal-Q Navier--Stokes study: audit, correction and verification
+% ---------------------------------------------------------------------------
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{float}
+
+\graphicspath{{../figures/}}
+\sisetup{round-mode=places,round-precision=5}
+
+\title{\textbf{Wafer-Rack Equal-$Q$ Navier--Stokes Study}\\[2pt]
+\large Audit, Correction, and Independent Numerical Verification}
+\author{CFD code review \& reproduction}
+\date{\today}
+
+\begin{document}
+
+% ===========================================================================
+%  PAGE 1 : TITLE + NOMENCLATURE
+% ===========================================================================
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+A two-dimensional incompressible Navier--Stokes solver for flow through a rack
+of six wafers is reviewed, corrected, and independently re-run. The solver uses
+a geometry-aligned Marker-and-Cell (MAC) staggered grid with a fractional-step
+(projection) method, first-order donor-cell upwind advection and explicit
+second-order diffusion. An equal-rack-flow constraint fixes the inlet velocity
+of each pitch by a bracketed scalar root solve. Independent reruns reproduce the
+audited production inlet speeds and hydraulic resistances, confirm discrete mass
+conservation at roundoff ($\sim\!10^{-13}\%$), and recover the resistance
+ordering $R_{h,\mathrm{Small}}>R_{h,\mathrm{Medium}}>R_{h,\mathrm{Large}}$.
+\end{abstract}
+
+\section*{Nomenclature}
+\addcontentsline{toc}{section}{Nomenclature}
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{p{0.16\textwidth} p{0.58\textwidth} p{0.18\textwidth}}
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Units (2-D)} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Units (2-D)} \\
+\midrule
+\endhead
+\multicolumn{3}{l}{\emph{Geometry}}\\
+$W$            & Tank width                                              & m \\
+$H$            & Tank height                                             & m \\
+$N_w$          & Number of wafers ($=6$)                                 & -- \\
+$P$            & Wafer pitch (centre-to-centre spacing)                  & m \\
+$t_h$          & Wafer thickness ($=\SI{0.015}{m}$)                      & m \\
+$y_0,\,y_1$    & Lower / upper wafer extent ($0.12,\,0.25$)              & m \\
+$w_\mathrm{in}$& Inlet slot width ($=\SI{0.015}{m}$)                     & m \\
+$y_\mathrm{cut}$& Horizontal flux-evaluation line ($=0.20$)              & m \\[4pt]
+\multicolumn{3}{l}{\emph{Field variables}}\\
+$u,\,v$        & Horizontal / vertical velocity components               & m\,s$^{-1}$ \\
+$\mathbf{u}$   & Velocity vector $(u,v)$                                 & m\,s$^{-1}$ \\
+$|\mathbf{u}|$ & Flow speed $\sqrt{u^2+v^2}$                             & m\,s$^{-1}$ \\
+$p$            & Kinematic pressure ($p/\rho$)                           & m$^2$\,s$^{-2}$ \\
+$U_\mathrm{in}$& Prescribed inlet (slot) vertical speed                  & m\,s$^{-1}$ \\[4pt]
+\multicolumn{3}{l}{\emph{Fluid / control parameters}}\\
+$\nu$          & Kinematic viscosity ($=\SI{7.5e-4}{m^2 s^{-1}}$)        & m$^2$\,s$^{-1}$ \\
+$Q_\mathrm{rack}$ & Flow rate through the five interior gaps at $y_\mathrm{cut}$ & m$^2$\,s$^{-1}$ \\
+$Q_0$          & Equal-flow target ($=0.0055463$)                        & m$^2$\,s$^{-1}$ \\
+$Q_\mathrm{in}$& Total inlet flux at the bottom boundary                 & m$^2$\,s$^{-1}$ \\
+$Q(y)$         & Net flux across horizontal face $y$                     & m$^2$\,s$^{-1}$ \\
+$\Delta p$     & Rack pressure drop ($p_{\mathrm{below}}-p_{\mathrm{above}}$) & m$^2$\,s$^{-2}$ \\
+$R_h$          & Hydraulic resistance $\Delta p / Q_\mathrm{rack}$       & s\,m$^{-2}$ \\[4pt]
+\multicolumn{3}{l}{\emph{Discretization}}\\
+$N_x,\,N_y$    & Number of pressure cells in $x,\,y$                     & -- \\
+$n_\mathrm{gap}$& Fluid cells across each inter-wafer gap ($=20$)        & -- \\
+$\Delta x,\,\Delta y$ & Local cell sizes (nonuniform)                    & m \\
+$\Delta t$     & Explicit time step                                      & s \\
+$\mathrm{res}$ & Steady-state residual (rel. velocity change)            & -- \\[4pt]
+\multicolumn{3}{l}{\emph{Operators / acronyms}}\\
+$\nabla\!\cdot$, $\nabla$ & Discrete divergence / gradient operators    & m$^{-1}$ \\
+MAC            & Marker-and-Cell staggered grid                          & -- \\
+FD             & (legacy) Finite-difference model                        & -- \\
+CFL            & Courant--Friedrichs--Lewy number                        & -- \\
+\bottomrule
+\end{longtable}
+
+\clearpage
+
+% ===========================================================================
+%  BODY
+% ===========================================================================
+\section{Governing equations and method}
+The flow solves the 2-D incompressible Navier--Stokes equations
+\begin{align}
+\frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u}\cdot\nabla)\mathbf{u}
+&= -\nabla p + \nu\,\nabla^2 \mathbf{u}, &
+\nabla\cdot\mathbf{u} &= 0,
+\end{align}
+on a geometry-aligned MAC staggered grid. A fractional-step projection advances
+the velocity: an explicit predictor (first-order donor-cell upwind advection,
+second-order nonuniform diffusion) is followed by a pressure Poisson solve and a
+divergence-free correction,
+\begin{equation}
+\nabla^2 p = \frac{1}{\Delta t}\,\nabla\!\cdot\mathbf{u}^{*},
+\qquad
+\mathbf{u}^{n+1} = \mathbf{u}^{*} - \Delta t\,\nabla p .
+\end{equation}
+The discrete gradient (correction) and divergence operators are mutually
+adjoint, so the assembled pressure matrix is exactly $-\nabla\!\cdot\nabla$ of
+the operators actually applied; this guarantees discrete mass conservation. The
+pressure Poisson system is factorized once per grid and reused across all
+root-finding evaluations. Boundary conditions: no-slip on the tank side/bottom
+walls and all wafer surfaces, prescribed vertical inlet slots at the bottom, and
+a $p=0$ open outlet at the top.
+
+\paragraph{Equal-$Q$ control.}
+For each pitch the inlet speed $U_\mathrm{in}$ is chosen so the rack flow equals
+a common target $Q_0$. This is a bracketed secant iteration with a bisection
+safeguard, where every function evaluation is a fully converged CFD solve. It
+enforces an integral control constraint; it is not a fit to data.
+
+\section{Code audit and corrections}
+The audited bundle was reviewed statically and then exercised. The following
+non-numerical corrections were applied (none alters the discretization, so the
+reproduced physics is unchanged):
+\begin{enumerate}\itemsep2pt
+\item \textbf{Hard-coded \texttt{/mnt/data} paths removed.} The driver now
+imports the solver from its own directory and writes to \texttt{\$WAFER\_OUT}
+(default: current directory), created lazily so the module imports without
+filesystem side effects.
+\item \textbf{Self-test fixed.} \texttt{mac\_cfd\_adaptive.py} previously called
+\texttt{Solver(0.06, 0.0025)}, passing \num{0.0025} where the integer gap-cell
+count $n_\mathrm{gap}$ is expected; this collapsed every gap to a single cell.
+Corrected to \texttt{Solver(0.06, 20)}.
+\item \textbf{Driver de-duplication.} \texttt{run\_production\_equalq.py} (a
+byte-identical copy of the audited driver) is now a thin re-export, and the
+single-case runners import one shared \texttt{metrics} implementation.
+\item \textbf{Stale documentation relabelled.} The legacy FD inlet speeds
+($0.5605/0.3000/0.1833$) are now explicitly marked as the earlier
+finite-difference model, distinct from the audited MAC values.
+\item \textbf{Near-wall note.} A deliberate first-order asymmetry in the $v$
+$y$-diffusion stencil is documented in place (left unchanged to preserve the
+audited results).
+\end{enumerate}
+
+\section{Verification results}
+Table~\ref{tab:results} lists independent reruns through the audited driver's
+own convergence and root-finding logic. These are reproduction runs (each within
+the $0.075\%$ root tolerance), reported separately from the final production
+values. Discrete mass conservation holds to roundoff and the resistance ordering
+is recovered exactly.
+
+\begin{table}[H]
+\centering
+\caption{Independent rerun verification (corrected code). $Q_0=0.0055463$.}
+\label{tab:results}
+\begin{tabular}{l c c c c c c}
+\toprule
+Case & $P$ & $U_\mathrm{in}$ & $Q_\mathrm{rack}$ & $(Q_\mathrm{rack}\!-\!Q_0)/Q_0$ & $\Delta p$ & $R_h$ \\
+\midrule
+Small  & 0.040 & 0.69372 & \num{5.5440e-3} & $-0.041\%$ & 0.081714 & 14.739 \\
+Medium & 0.060 & 0.38844 & \num{5.5443e-3} & $-0.036\%$ & 0.015134 & 2.7297 \\
+Large  & 0.080 & 0.23734 & \num{5.5458e-3} & $-0.008\%$ & 0.005473 & 0.9868 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Discrete mass conservation: worst section-flow error
+$\max_y |Q(y)-Q_\mathrm{in}|/Q_\mathrm{in}$.}
+\label{tab:mass}
+\begin{tabular}{l c}
+\toprule
+Case & max section-flow error \\
+\midrule
+Small  & \num{1.1e-13}\,\% \\
+Medium & \num{4.4e-14}\,\% \\
+Large  & \num{4.4e-14}\,\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Reproduced inlet speeds match the audited production targets
+($0.69374/0.38871/0.23741$) to within the root tolerance, and the resistances
+reproduce the reported $14.739/2.730/0.987$.
+
+\section{Flow fields}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.93\textwidth]{field_large_2d}
+\caption{Large-pitch ($P=0.080$) velocity vector field; colour is speed
+$|\mathbf{u}|$, white arrows the velocity, gray blocks the wafers, dashed line
+the $y_\mathrm{cut}=0.20$ flux line.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.93\textwidth]{streamlines_all}
+\caption{Streamlines over speed for the three pitches (velocity interpolated to a
+uniform grid for streamline tracing).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.93\textwidth]{pressure_all}
+\caption{Kinematic pressure field with contours. Pressure drop across the rack
+grows sharply as the pitch tightens, consistent with the $R_h$ ordering.}
+\end{figure}
+
+\section{Equal-$Q$ cut profiles}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{ycut_speed_overlay}
+\caption{Overlaid $y_\mathrm{cut}=0.20$ cut of flow speed. Tighter pitch reaches
+a higher peak speed in the clear gaps to carry the common $Q_\mathrm{rack}$.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{ycut_v_overlay}
+\caption{Overlaid $y_\mathrm{cut}=0.20$ cut of signed vertical velocity $v(x)$
+over the five interior gaps (no-slip zeros imposed at wafer faces).}
+\end{figure}
+
+\section{Conclusions}
+The MAC projection solver is discretely consistent and mass-conserving to
+roundoff. The equal-$Q$ root solve reliably drives $Q_\mathrm{rack}$ to the
+common target, and the corrected, portable code reproduces the audited inlet
+speeds and hydraulic resistances
+($R_h = 14.739 > 2.730 > 0.987$ for Small $>$ Medium $>$ Large). The absolute
+inlet speeds of the audited MAC model ($\approx 0.694/0.388/0.237$) differ from
+the legacy finite-difference model's values because the numeric target $Q_0$ was
+carried over as a fixed constant rather than being redefined self-consistently
+for the MAC discretization.
+
+\end{document}
