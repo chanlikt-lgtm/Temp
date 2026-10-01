@@ -1,0 +1,8 @@
+01_fig3_no_fit_analytic.py: syntax OK
+02_green_function_closed_form.py: syntax OK
+03_breakdown_thickness_sweeps.py: syntax OK
+04_pde_to_vbd_sweep_quasi2d.py: syntax OK
+05_pde_efield_2d3d_three_cases.py: syntax OK
+06_all_in_one_quasi2d_potential_efield.py: syntax OK
+07_direct_2d_poisson_fd_to_vbd.py: syntax OK
+08_compare_surface_breakdown_paths.py: syntax OK
