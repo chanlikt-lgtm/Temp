@@ -168,20 +168,27 @@ def run_case(item):
             hi,mhi,shi=umid,mm,sm
         final=(umid,mm,sm,rr,nn,hh)
     U,mm,sm,rr,nn,hh=final
-    # one final polishing convergence from final state
+    # Final convergence-gated polish from the final state.
     mf,sf,hf,rf,nf=converge(s,U,dt,sm,min_steps=min0,max_steps=max0,require_converged=True)
     errf=mf['Q_rack']/Q_TARGET-1
-    # if polishing drifted beyond tolerance, do one bracket correction using current bracket
+    # Enforced secant/bisection correction: a fully-settled solve can drift Q past
+    # the cheap root step, so re-root on convergence-gated evaluations until the
+    # settled Q is within tolerance.  (Matches verification/verify_case.py.)
+    tries=0
+    while abs(errf)>ROOT_TOL and tries<4:
+        tries+=1
+        if mf['Q_rack']<Q_TARGET: lo,mlo,slo=U,mf,sf
+        else:                     hi,mhi,shi=U,mf,sf
+        ql,qh=mlo['Q_rack'],mhi['Q_rack']
+        U=lo+(Q_TARGET-ql)*(hi-lo)/(qh-ql)
+        U=min(max(U,lo+0.10*(hi-lo)),hi-0.10*(hi-lo))
+        state=slo if abs(U-lo)<=abs(hi-U) else shi
+        mf,sf,hf,rf,nf=converge(s,U,dt,state,min_steps=min0,max_steps=max0,require_converged=True)
+        errf=mf['Q_rack']/Q_TARGET-1
+        root_hist.append({'eval':f'final_correct{tries}','U_in':U,'Q_rack':mf['Q_rack'],'err_pct':100*errf,'steps':nf,'residual':rf})
     if abs(errf)>ROOT_TOL:
-        if mf['Q_rack']<Q_TARGET:
-            lo,mlo,slo=U,mf,sf
-        else:
-            hi,mhi,shi=U,mf,sf
-        U2=0.5*(lo+hi)
-        state=slo if abs(U2-lo)<=abs(hi-U2) else shi
-        mf,sf,hf,rf,nf=converge(s,U2,dt,state,min_steps=min0,max_steps=max0,require_converged=True)
-        U=U2; errf=mf['Q_rack']/Q_TARGET-1
-        root_hist.append({'eval':'final_bisect','U_in':U,'Q_rack':mf['Q_rack'],'err_pct':100*errf,'steps':nf,'residual':rf})
+        raise RuntimeError(f'{label}: root not within tolerance after correction '
+                           f'(err={100*errf:+.4f}% > {100*ROOT_TOL:.3f}%); widen bracket or raise step caps.')
     # save fields
     g=s.g
     np.savez_compressed(os.path.join(OUT,f'{label.lower()}_production.npz'),
@@ -220,7 +227,7 @@ if __name__=='__main__':
       'pressure_projection':'compatible discrete D/G operators; sparse direct pressure-Poisson solve',
       'pressure_outlet':'p=0 at open top boundary',
       'walls':'no-slip on tank side/bottom walls and wafer surfaces; prescribed bottom vertical inlet slots',
-      'equal_Q_method':'bracketed secant with bisection safeguard; each function evaluation is a converged CFD solve',
+      'equal_Q_method':'bracketed secant with bisection safeguard; evaluations are advanced to a tightened, enforced steady-state gate (accepted steady-state, not an exact converged state); final root is convergence-gated with a secant/bisection correction and a tolerance assertion',
       'no_fitting':True,
       'nu':NU,'Q_target':Q_TARGET,'n_gap_cells_production':N_GAP,'root_tolerance_fraction':ROOT_TOL,
       'elapsed_seconds':time.time()-t,

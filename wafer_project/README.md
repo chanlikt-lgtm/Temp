@@ -4,15 +4,17 @@
 Geometry-aligned MAC staggered grid, fractional-step (projection) method,
 first-order donor-cell upwind advection, explicit second-order diffusion. An
 equal-rack-flow constraint fixes each pitch's inlet speed by a bracketed scalar
-root solve (every evaluation is a converged CFD run).
+root solve (each evaluation is advanced to a tightened, enforced steady-state gate
+— an accepted steady state, not an exact converged state).
 
 ## Layout
 
 - `code/` — corrected Python bundle
-  - `audited_final/` — production entry points (`mac_cfd_adaptive.py`, `equalQ_root_driver.py`)
-  - `supporting_scripts/` — report generation, mesh/timestep studies, plotting
+  - `audited_final/` — production entry points (`mac_cfd_adaptive.py`, `equalQ_root_driver.py`), portable
+  - `supporting_scripts/` — portable runners (`run_production_equalq.py`, `run_one_case_equalq.py`, `run_mesh_small.py`)
+  - `deprecated/` — archival scripts that still contain hard-coded `/mnt/data` paths from the original environment (NOT portable; kept for provenance)
   - `earlier_versions/` — retained for provenance only
-- `verification/` — independent rerun harness (`verify_case.py`), plot scripts, `*_verify.json`
+- `verification/` — reproducibility harness (`verify_case.py`; same `Solver`, not an independent implementation), grid/timestep study (`study_small.py`), plot scripts, `*_verify.json`
 - `figures/` — rendered PNGs (fields, streamlines, pressure, y=0.20 cuts)
 - `report/` — `wafer_report.tex` (+ `Makefile`); first page carries the nomenclature
 
@@ -23,7 +25,7 @@ root solve (every evaluation is a converged CFD run).
 2. **Convergence gate tightened + enforced** — residual 3e-5→1e-5, drift 1e-3→2e-4 (now incl. Δp), raises at the step cap instead of returning silently; final polish is convergence-enforced with a secant/bisection correction.
 
 **Non-numerical:**
-3. Removed hard-coded `/mnt/data` (and scratchpad) paths; output dir is `$WAFER_OUT` (default: script dir), created lazily.
+3. Made the active workflow portable (`audited_final/`, the three `supporting_scripts/` runners, and `verification/`): no hard-coded `/mnt/data` or scratchpad paths; output dir is `$WAFER_OUT` (default: script dir), created lazily. Legacy one-off scripts that still assume `/mnt/data` were moved to `code/deprecated/` as archival.
 4. Fixed the self-test: `Solver(0.06, 0.0025)` → `Solver(0.06, 20)`.
 5. De-duplicated the equal-Q drivers (`run_production_equalq.py` re-export; shared `metrics`).
 6. Relabelled stale legacy-FD speeds (0.5605/0.3000/0.1833); documented the near-wall v y-diffusion asymmetry.

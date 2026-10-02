@@ -41,10 +41,12 @@ of each pitch by a bracketed scalar root solve. Reproduction reruns
 inlet speeds and hydraulic resistances, confirm discrete mass conservation at
 roundoff ($\sim\!10^{-13}\%$), and recover the ordering
 $R_{h,\mathrm{Small}}>R_{h,\mathrm{Medium}}>R_{h,\mathrm{Large}}$. This is a
-reproducibility check, not an independent-implementation verification, and grid-
-and timestep-independence have not yet been established; the absolute
-$U_\mathrm{in}$, $\Delta p$ and $R_h$ values are therefore discretization-dependent
-(see \S\ref{sec:caveats}).
+reproducibility check, not an independent-implementation verification. A
+preliminary grid/timestep study is reported for the Small case only
+(\S\ref{sec:grid}): timestep error is negligible and grid refinement is
+monotonic, but the continuum-limit error is not formally estimated, and
+Medium/Large remain unrefined. The absolute $U_\mathrm{in}$, $\Delta p$ and
+$R_h$ values are therefore discretization-dependent (see \S\ref{sec:caveats}).
 \end{abstract}
 
 \section*{Nomenclature}
@@ -152,8 +154,9 @@ was tightened ($3\times10^{-5}\!\to\!10^{-5}$) and the observable-drift toleranc
 tightened ($10^{-3}\!\to\!2\times10^{-4}$, now including $\Delta p$); reaching the
 step cap raises an error instead of silently returning. Equal-$Q$ evaluations are
 run best-effort while rooting and convergence-enforced on the final polish, with
-an enforced secant/bisection correction so the \emph{fully converged} $Q$ is
-within tolerance.
+an enforced secant/bisection correction, with a final tolerance assertion, so
+the accepted steady-state $Q$ is within tolerance. The same correction loop and
+assertion are used in both the production driver and the verification harness.
 \end{enumerate}
 
 \paragraph{Non-numerical corrections (do not change the discretization).}
@@ -261,19 +264,25 @@ was halved at fixed $U_\mathrm{in}$ on the production mesh.
 \centering
 \caption{Small-pitch grid refinement (equal-$Q$ re-rooted per mesh).}
 \label{tab:grid}
-\begin{tabular}{c c c c c}
+\begin{tabular}{c c c c c c c}
 \toprule
-$n_\mathrm{gap}$ & $N_x$ & $U_\mathrm{in}$ & $R_h$ & central peak $v$ \\
+$n_\mathrm{gap}$ & $N_x\!\times\!N_y$ & $\Delta x_\mathrm{min}$ & $\Delta y_\mathrm{min}$ & $U_\mathrm{in}$ & $R_h$ & central peak $v$ \\
 \midrule
-12 & 186 & 0.69542 & 15.014 & 0.08219 \\
-16 & 218 & 0.69298 & 14.835 & 0.08142 \\
-20 & 238 & 0.69382 & 14.740 & 0.08130 \\
+12 & $186\!\times\!63$  & \num{1.67e-3} & \num{4.17e-3} & 0.69542 & 15.014 & 0.08219 \\
+16 & $218\!\times\!85$  & \num{1.50e-3} & \num{3.08e-3} & 0.69298 & 14.835 & 0.08142 \\
+20 & $238\!\times\!106$ & \num{1.25e-3} & \num{2.50e-3} & 0.69382 & 14.740 & 0.08130 \\
 \bottomrule
 \end{tabular}
 \\[2pt]
-{\footnotesize Refinement $16\!\to\!20$: $R_h$ $-0.64\%$, peak $v$ $-0.15\%$;
-monotone and converging, with $\sim\!0.6\%$ residual in $R_h$ at the production
-mesh. A finer mesh would be needed to claim $R_h$ to better than $\sim\!1\%$.}
+{\footnotesize The sequence is monotonic; refinement from $n_\mathrm{gap}=16$ to
+$20$ changes $R_h$ by $-0.64\%$ (peak $v$ by $-0.15\%$). This is the last
+successive-grid difference, \emph{not} an estimate of the remaining
+continuum-limit error: with only three nonuniform, not strictly self-similar
+grids and a scheme containing first-order terms, the continuum error is not
+formally quantified here (a crude $h\!\propto\!1/n_\mathrm{gap}$ extrapolation
+would place the finest $R_h$ roughly $1.5$--$2.6\%$ above an extrapolated limit).
+A further systematically refined mesh would be needed to assign a defensible
+numerical uncertainty.}
 \end{table}
 
 \begin{table}[H]
@@ -284,7 +293,7 @@ mesh. A finer mesh would be needed to claim $R_h$ to better than $\sim\!1\%$.}
 \toprule
  & $Q_\mathrm{rack}$ & central peak $v$ & $\Delta p$ \\
 \midrule
-change when $\Delta t\!\to\!\Delta t/2$ & $+0.0001\%$ & $+0.01\%$ & $-0.02\%$ \\
+change when $\Delta t\!\to\!\Delta t/2$ & $+0.0001\%$ & $+0.003\%$ & $-0.017\%$ \\
 \bottomrule
 \end{tabular}
 \\[2pt]
@@ -361,18 +370,19 @@ under-sizing and lowered $U_\mathrm{in}$ for Medium and Large accordingly.
 \item \textbf{Approximate steady state.} See \S\ref{sec:conv}: acceptance is a
 tightened, enforced steady-state gate (not an exact converged state).
 \item \textbf{Pressure-tap sensitivity.} $R_h$ depends on the tap planes
-(\S\ref{sec:taps}). On the corrected Large field, the default planes give
-$R_h=0.987$; moving them just outside the wafer ends ($y=0.1175/0.2525$) gives
-$1.070$ ($+8.4\%$) and farther out ($y=0.0775/0.2975$) gives $0.945$ ($-4.2\%$).
-Only the ordering is tap-robust.
-\item \textbf{Grid/timestep convergence (Small, demonstrated).} A three-mesh
+(\S\ref{sec:taps}). On the corrected Large field, the default
+planes ($y\approx0.0975/0.2825$) give $R_h=0.987$; moving the tap planes by a few
+grid rows to $y=0.1175/0.2525$ (just outside the wafer ends) gives $1.070$
+($+8.4\%$) and to $y=0.0775/0.2975$ gives $0.945$ ($-4.2\%$). Only the ordering
+is tap-robust.
+\item \textbf{Grid/timestep convergence (Small, preliminary).} A three-mesh
 refinement and a timestep halving were run for the Small case (\S\ref{sec:grid}):
-timestep error is negligible ($<0.02\%$) and $R_h$ is monotone-converging with
-$\sim\!0.6\%$ residual at the production mesh, so absolute $R_h$ is good to
-$\sim\!1\%$ for Small. Medium and Large have not yet had the same refinement, so
-their absolute values carry at least a comparable (unquantified) grid
-uncertainty; the large separation between the three $R_h$ makes the ordering
-robust regardless.
+timestep error is negligible ($<0.02\%$) and grid refinement is monotonic (last
+successive-grid change $-0.64\%$ in $R_h$). The continuum-limit error is
+\emph{not} formally estimated from three nonuniform grids, so no ``$R_h$ accurate
+to $X\%$'' claim is made. Medium and Large have not been refined; their absolute
+values carry at least comparable, unquantified grid uncertainty. The large
+separation between the three $R_h$ makes the ordering robust regardless.
 \item \textbf{Reproducibility, not independent verification.} The rerun harness
 imports the production \texttt{Solver}; it checks reproducibility and cannot
 expose an error shared by that implementation.
@@ -387,10 +397,12 @@ present discretization}, essentially unchanged by the inlet correction. With the
 inlet slots grid-aligned, the corrected inlet speeds are
 $U_\mathrm{in}\approx 0.694/0.352/0.206$ (Small unchanged; Medium and Large lower
 than the pre-alignment $0.388/0.237$, because the earlier slots were $10$--$13\%$
-undersized). These remain reproduced computations, not yet mesh-independent,
-physically validated quantities (\S\ref{sec:caveats}); a grid-refinement and
-timestep study is the next step before the absolute $U_\mathrm{in}$, $\Delta p$
-and $R_h$ can be called discretization-independent. The absolute speeds also
+undersized). These remain reproduced computations, not mesh-independent,
+physically validated quantities (\S\ref{sec:caveats}). A preliminary grid and
+timestep study has been performed for Small only (monotonic refinement, negligible
+timestep error, continuum error not formally quantified); Medium and Large remain
+unrefined, so their absolute $U_\mathrm{in}$, $\Delta p$ and $R_h$ are not yet
+claimed discretization-independent. The absolute speeds also
 differ from the legacy finite-difference model's ($0.5605/0.3000/0.1833$)
 because the numeric target $Q_0$ was carried over as a fixed constant rather than
 redefined self-consistently for the MAC discretization.

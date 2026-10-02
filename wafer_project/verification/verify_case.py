@@ -46,9 +46,9 @@ def run(label):
     # final polish: convergence ENFORCED (raises if the cap is hit)
     mf,sf,hf,rf,nf=converge(s,U,dt,sm,min_steps=cfg['min0'],max_steps=cfg['maxf'],require_converged=True)
     errf=mf['Q_rack']/Q_TARGET-1
-    # Enforced secant/bisection correction: a fully converged solve can drift Q
-    # past the cheap root step, so re-root on CONVERGED evaluations until the
-    # fully-converged Q is within tolerance.
+    # Enforced secant/bisection correction: a fully-settled solve can drift Q
+    # past the cheap root step, so re-root on convergence-gated evaluations until
+    # the accepted steady-state Q is within tolerance.
     tries=0
     while abs(errf)>ROOT_TOL and tries<4:
         tries+=1
