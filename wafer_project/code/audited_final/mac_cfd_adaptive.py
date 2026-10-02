@@ -45,7 +45,23 @@ def build_geom(pitch, n_gap=20):
         # one solid cell across wafer thickness; boundaries align exactly
         xf += subdiv(left[k],right[k],1)
         if k < N_WAFERS-1:
-            xf += subdiv(right[k],left[k+1],n_gap)
+            # Inter-wafer gap.  Place the two inlet-slot edges (gap centre
+            # +/- INLET_W/2) as EXACT x-grid faces so every discretized slot is
+            # identically INLET_W wide, independent of pitch.  n_gap cells are
+            # distributed across the three sub-segments in proportion to width
+            # (no slivers: the slot sits well inside every gap considered here).
+            g0=right[k]; g1=left[k+1]; gc=0.5*(g0+g1)
+            a=gc-INLET_W/2; b=gc+INLET_W/2
+            if a>g0+1e-9 and b<g1-1e-9:
+                w=g1-g0
+                nL=max(1,int(round(n_gap*(a-g0)/w)))
+                nM=max(1,int(round(n_gap*(b-a)/w)))
+                nR=max(1,n_gap-nL-nM)
+                xf += subdiv(g0,a,nL)
+                xf += subdiv(a,b,nM)
+                xf += subdiv(b,g1,nR)
+            else:
+                xf += subdiv(g0,g1,n_gap)
     nside=max(4,int(np.ceil((0.75-right[-1])/max(2*hgap,0.0035))))
     xf += subdiv(right[-1],0.75,nside)
     xf += subdiv(0.75,1.0,25)

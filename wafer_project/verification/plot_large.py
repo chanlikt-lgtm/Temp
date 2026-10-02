@@ -1,10 +1,10 @@
-import numpy as np
+import os, numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-BASE='/tmp/claude-0/-home-user-Temp/36b846dc-25a1-5185-8f16-2e39764cc5de/scratchpad/wafer'
+BASE=os.environ.get('WAFER_OUT', os.path.dirname(os.path.abspath(__file__)))
 z=np.load(BASE+'/large_verify.npz')
 u,v,p=z['u'],z['v'],z['p']
 xc,yc,xf,yf=z['xc'],z['yc'],z['xf'],z['yf']

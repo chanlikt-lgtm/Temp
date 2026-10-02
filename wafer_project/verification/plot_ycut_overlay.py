@@ -1,7 +1,7 @@
-import numpy as np, matplotlib
+import os, numpy as np, matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-BASE='/tmp/claude-0/-home-user-Temp/36b846dc-25a1-5185-8f16-2e39764cc5de/scratchpad/wafer'
+BASE=os.environ.get('WAFER_OUT', os.path.dirname(os.path.abspath(__file__)))
 YCUT=0.20
 colors={'Small':'tab:blue','Medium':'tab:orange','Large':'tab:green'}
 

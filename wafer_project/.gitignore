@@ -4,3 +4,5 @@ __pycache__/
 *.nbi
 wafer_mac_equalQ_v2/
 *_verify.npz
+*.log
+verification/*.png
