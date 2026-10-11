@@ -47,6 +47,33 @@ PANASONIC_OUIS = {
     "f4:85:e4", "f8:a9:d0",
 }
 
+# ---------------------------------------------------------------------------
+# Known devices you want to label specifically.
+# Add your air conditioner's MAC here (lowercase, colon-separated) so the
+# scanner names it directly. Find the MAC in your router's device list or
+# in the Comfort Cloud app.  Example for the Panasonic CS-XU18BKH-1:
+#     "ac:9a:22:11:22:33": "Panasonic AC  CS-XU18BKH-1 (living room)",
+# ---------------------------------------------------------------------------
+KNOWN_DEVICES = {
+    # "xx:xx:xx:xx:xx:xx": "Panasonic AC  CS-XU18BKH-1",
+}
+
+# TCP ports a Panasonic AC Wi-Fi adapter commonly answers on. Used only to
+# add confidence that a discovered Panasonic device is really the AC.
+AC_PROBE_PORTS = (8000, 80, 443, 56789)
+
+
+def probe_ac_ports(ip: str, timeout: float = 0.6):
+    """Return the list of AC_PROBE_PORTS that accept a TCP connection."""
+    open_ports = []
+    for port in AC_PROBE_PORTS:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                open_ports.append(port)
+        except OSError:
+            pass
+    return open_ports
+
 
 def normalize_mac(mac: str) -> str:
     """Return MAC as lowercase colon-separated, or '' if not a MAC."""
@@ -136,7 +163,11 @@ def main():
     warm_arp(subnet)
 
     entries = read_arp_table()
-    found = [(ip, mac) for ip, mac in entries if oui_of(mac) in PANASONIC_OUIS]
+    found = [
+        (ip, mac)
+        for ip, mac in entries
+        if oui_of(mac) in PANASONIC_OUIS or mac in KNOWN_DEVICES
+    ]
 
     print("\n" + "=" * 52)
     if found:
@@ -144,7 +175,14 @@ def main():
         for ip, mac in found:
             online = ping(ip)
             status = "ONLINE  ✅" if online else "no ping reply ⚠️"
-            print(f"   IP: {ip:15s}  MAC: {mac}  -> {status}")
+            label = KNOWN_DEVICES.get(mac, "Panasonic device")
+            ports = probe_ac_ports(ip)
+            port_note = (
+                f"  [AC port(s) open: {', '.join(map(str, ports))}]"
+                if ports else ""
+            )
+            print(f"   {label}")
+            print(f"     IP: {ip:15s}  MAC: {mac}  -> {status}{port_note}")
         print("\nIf one of these is your air conditioner, it is on the network.")
     else:
         print("❌ No Panasonic device found on the network.")
