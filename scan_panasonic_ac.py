@@ -98,16 +98,27 @@ def warm_arp(subnet: str) -> None:
 
 
 def read_arp_table():
-    """Return list of (ip, mac) tuples from the OS ARP table."""
-    try:
-        out = subprocess.run(
-            ["arp", "-a"], capture_output=True, text=True
-        ).stdout
-    except FileNotFoundError:
-        # Linux fallback
-        out = subprocess.run(
-            ["ip", "neigh"], capture_output=True, text=True
-        ).stdout
+    """Return list of (ip, mac) tuples from the OS ARP table.
+
+    Tries several sources in order so it works across OSes and when some
+    tools are missing: `arp -a`, then `ip neigh`, then /proc/net/arp.
+    """
+    out = ""
+    for cmd in (["arp", "-a"], ["ip", "neigh"]):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True).stdout
+            if out.strip():
+                break
+        except (FileNotFoundError, OSError):
+            continue
+
+    if not out.strip():
+        # Final fallback: read the kernel ARP cache directly (Linux).
+        try:
+            with open("/proc/net/arp") as fh:
+                out = fh.read()
+        except OSError:
+            out = ""
 
     entries = []
     for line in out.splitlines():
